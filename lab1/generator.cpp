@@ -20,7 +20,7 @@ int main(void) {
 	cout << "enter the sign of the mathematical operation: +, -, *, /" << endl;
 	cin >> sign_operation;
 
-	ofstream fout("func_1.cpp");
+	ofstream fout("func.cpp");
 	fout << "#include <iostream>" << endl;
 	fout << "int f(void) {" << endl;
 	fout << type1 << " var1 = 1;" << endl;
