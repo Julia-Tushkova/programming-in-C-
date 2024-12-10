@@ -20,3 +20,13 @@
  - plant.h & plant.cpp - описание класса Plant
  - task2.cpp - работа с экземплярами класса Plant
  - makefile
+
+---
+
+/lab3 - папка с лабораторной №3
+
+В папке находится 4 файла:
+
+ - plant.h & plant.cpp - описание класса Plant
+ - task3.cpp - работа с функциями библиотеки stl
+ - makefile
