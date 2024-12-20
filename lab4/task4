@@ -1,0 +1,565 @@
+#include <iostream>
+#include <unordered_map>
+#include <vector>
+#include <chrono>
+#include <cmath>
+#include <random>
+#include <ctime>
+
+#define n 20
+#define rw 10
+
+// Предварительное объявление класса SparseMatrix
+template<typename T>
+class SparseMatrix;
+
+// Шаблонный класс для разреженного вектора
+template<typename T>
+class SparseVector {
+private:
+  std::unordered_map<size_t, T> elements; // Хранение ненулевых элементов
+  size_t size; // Размер вектора
+
+public:
+  SparseVector(size_t size) : size(size) {}
+
+  // Доступ к элементу с проверкой на выход за пределы
+  T& operator[](size_t index) {
+    if (index >= size) throw std::out_of_range("Index out of range");
+    return elements[index];
+  }
+
+  // Получить размер вектора
+  size_t getSize() const {
+    return size;
+  }
+
+  // Вывод всех элементов вектора
+  void display() const {
+    for (size_t i = 0; i < size; ++i) {
+      if (i > 0) std::cout << ", ";
+      if (elements.contains(i)) {
+        std::cout << elements.at(i);
+      }
+      else {
+        std::cout << "0";
+      }
+    }
+    std::cout << "\n";
+  }
+
+  // Сложение двух разреженных векторов
+  SparseVector<T> operator+(const SparseVector<T>& other) const {
+    if (size != other.size) throw std::invalid_argument("Size mismatch");
+    SparseVector<T> result(size);
+    for (const auto& [index, value] : elements) {
+      result[index] = value;
+    }
+    for (const auto& [index, value] : other.elements) {
+      result[index] += value;
+    }
+    return result;
+  }
+
+  // Скалярное произведение двух разреженных векторов
+  T dot(const SparseVector<T>& other) const {
+    if (size != other.size) throw std::invalid_argument("Size mismatch");
+    T result = T();
+    for (const auto& [index, value] : elements) {
+      if (other.elements.contains(index)) {
+        result += value * other.elements.at(index);
+      }
+    }
+    return result;
+  }
+
+  // Умножение вектора на матрицу
+  template<typename U>
+  SparseVector<U> multiply(const SparseMatrix<U>& matrix) const {
+    if (size != matrix.getRows()) throw std::invalid_argument("Dimension mismatch");
+    SparseVector<U> result(matrix.getCols());
+    for (const auto& [index, value] : elements) {
+      for (const auto& [col, mat_value] : matrix.getRow(index)) {
+        result[col] += value * mat_value;
+      }
+    }
+    return result;
+  }
+
+  // Сложение с числом
+  SparseVector<T> operator+(T scalar) const {
+    SparseVector<T> result(size);
+    for (size_t i = 0; i < size; ++i) {
+      result[i] = (elements.contains(i) ? elements.at(i) : 0) + scalar;
+    }
+    return result;
+  }
+
+  // Вычитание числа
+  SparseVector<T> operator-(T scalar) const {
+    SparseVector<T> result(size);
+    for (size_t i = 0; i < size; ++i) {
+      result[i] = (elements.contains(i) ? elements.at(i) : 0) - scalar;
+    }
+    return result;
+  }
+
+  // Умножение на число
+  SparseVector<T> operator*(T scalar) const {
+    SparseVector<T> result(size);
+    for (const auto& [index, value] : elements) {
+      result[index] = value * scalar;
+    }
+    return result;
+  }
+
+  // Деление на число
+  SparseVector<T> operator/(T scalar) const {
+    if (scalar == 0) throw std::invalid_argument("Division by zero");
+    SparseVector<T> result(size);
+    for (const auto& [index, value] : elements) {
+      result[index] = value / scalar;
+    }
+    return result;
+  }
+
+  // Поэлементное возведение в степень
+  SparseVector<T> pow(T exponent) const {
+    SparseVector<T> result(size);
+    for (const auto& [index, value] : elements) {
+      result[index] = std::pow(value, exponent);
+    }
+    return result;
+  }
+};
+
+// Шаблонный класс для разреженной матрицы
+template<typename T>
+class SparseMatrix {
+private:
+  std::unordered_map<size_t, std::unordered_map<size_t, T>> elements; // Хранение ненулевых элементов
+  size_t rows, cols; // Количество строк и столбцов
+
+  T determinantRecursive(const SparseMatrix<T>& matrix, size_t size) const {
+    if (size == 1) {
+      return matrix.getElement(0, 0);
+    }
+
+    T det = T();
+    SparseMatrix<T> subMatrix(rows, cols);
+
+    for (size_t x = 0; x < size; ++x) {
+      subMatrix.clear();
+      for (size_t i = 1; i < size; ++i) {
+        size_t subCol = 0;
+        for (size_t j = 0; j < size; ++j) {
+          if (j == x) continue;
+          subMatrix.at(i - 1, subCol++) = matrix.getElement(i, j);
+        }
+      }
+      det += (x % 2 == 0 ? 1 : -1) * matrix.getElement(0, x) * determinantRecursive(subMatrix, size - 1);
+    }
+    return det;
+  }
+
+  void clear() {
+    elements.clear();
+  }
+
+public:
+  SparseMatrix(size_t rows, size_t cols) : rows(rows), cols(cols) {}
+
+  // Доступ к элементу с проверкой на выход за пределы
+  T& at(size_t row, size_t col) {
+    if (row >= rows || col >= cols) throw std::out_of_range("Index out of range");
+    return elements[row][col];
+  }
+
+  T getElement(size_t row, size_t col) const {
+    if (row >= rows || col >= cols) throw std::out_of_range("Index out of range");
+    if (elements.contains(row) && elements.at(row).contains(col)) {
+      return elements.at(row).at(col);
+    }
+    return T();
+  }
+
+  // Получить количество строк
+  size_t getRows() const {
+    return rows;
+  }
+
+  // Получить количество столбцов
+  size_t getCols() const {
+    return cols;
+  }
+
+  // Получить строку матрицы
+  const std::unordered_map<size_t, T>& getRow(size_t row) const {
+    if (row >= rows) throw std::out_of_range("Row out of range");
+    if (elements.contains(row)) {
+      return elements.at(row);
+    }
+    static const std::unordered_map<size_t, T> emptyRow;
+    return emptyRow;
+  }
+
+  // Транспонирование матрицы
+  SparseMatrix<T> transpose() const {
+    SparseMatrix<T> result(cols, rows);
+    for (const auto& [row, row_map] : elements) {
+      for (const auto& [col, value] : row_map) {
+        result.at(col, row) = value;
+      }
+    }
+    return result;
+  }
+
+  // Сложение двух разреженных матриц
+  SparseMatrix<T> operator+(const SparseMatrix<T>& other) const {
+    if (rows != other.rows || cols != other.cols) throw std::invalid_argument("Size mismatch");
+    SparseMatrix<T> result(rows, cols);
+    for (const auto& [row, row_map] : elements) {
+      for (const auto& [col, value] : row_map) {
+        result.at(row, col) = value;
+      }
+    }
+    for (const auto& [row, row_map] : other.elements) {
+      for (const auto& [col, value] : row_map) {
+        result.at(row, col) += value;
+      }
+    }
+    return result;
+  }
+
+  // Умножение матрицы на матрицу
+  SparseMatrix<T> operator*(const SparseMatrix<T>& other) const {
+    if (cols != other.rows) throw std::invalid_argument("Dimension mismatch");
+    SparseMatrix<T> result(rows, other.cols);
+    for (const auto& [row, row_map] : elements) {
+      for (const auto& [col, value] : row_map) {
+        for (const auto& [k, other_value] : other.getRow(col)) {
+          result.at(row, k) += value * other_value;
+        }
+      }
+    }
+    return result;
+  }
+
+  // Возведение матрицы в целочисленную степень
+  SparseMatrix<T> pow(int exp) const {
+    if (rows != cols) throw std::invalid_argument("Only square matrices can be raised to a power");
+    SparseMatrix<T> result(rows, cols);
+    SparseMatrix<T> base = *this;
+
+    // Инициализация единичной матрицы
+    for (size_t i = 0; i < rows; ++i) {
+      result.at(i, i) = 1;
+    }
+
+    while (exp > 0) {
+      if (exp % 2 == 1) {
+        result = result * base;
+      }
+      base = base * base;
+      exp /= 2;
+    }
+
+    return result;
+  }
+
+
+  SparseMatrix<T> cofactorMatrix() const {
+    SparseMatrix<T> cofactor(rows, cols);
+    SparseMatrix<T> subMatrix(rows - 1, cols - 1);
+
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        subMatrix.clear();
+        size_t subRow = 0;
+
+        for (size_t r = 0; r < rows; ++r) {
+          if (r == i) continue;
+          size_t subCol = 0;
+          for (size_t c = 0; c < cols; ++c) {
+            if (c == j) continue;
+            subMatrix.at(subRow, subCol++) = getElement(r, c);
+          }
+          ++subRow;
+        }
+        cofactor.at(i, j) = ((i + j) % 2 == 0 ? 1 : -1) * determinantRecursive(subMatrix, rows - 1);
+      }
+    }
+    return cofactor;
+  }
+
+
+  SparseMatrix<T> invert() const {
+    if (rows != cols) throw std::invalid_argument("Only square matrices can be inverted");
+
+    T det = determinantRecursive(*this, rows);
+    if (det == T()) {
+      throw std::runtime_error("Matrix is singular and cannot be inverted");
+    }
+
+    SparseMatrix<T> cofactor = cofactorMatrix();
+    SparseMatrix<T> adjugate = cofactor.transpose();
+    SparseMatrix<T> inverse(rows, cols);
+
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        inverse.at(i, j) = adjugate.getElement(i, j) / det;
+      }
+    }
+
+    return inverse;
+  }
+
+  // Вывод всех элементов матрицы
+  void display() const {
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        if (j > 0) std::cout << " ";
+        if (elements.contains(i) && elements.at(i).contains(j)) {
+          std::cout << elements.at(i).at(j);
+        }
+        else {
+          std::cout << "0";
+        }
+      }
+      std::cout << "\n";
+    }
+  }
+
+  // Сложение с числом
+  SparseMatrix<T> operator+(T scalar) const {
+    SparseMatrix<T> result(rows, cols);
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        result.at(i, j) = (elements.contains(i) && elements.at(i).contains(j)) ? elements.at(i).at(j) + scalar : scalar;
+      }
+    }
+    return result;
+  }
+
+  // Вычитание числа
+  SparseMatrix<T> operator-(T scalar) const {
+    SparseMatrix<T> result(rows, cols);
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        result.at(i, j) = (elements.contains(i) && elements.at(i).contains(j)) ? elements.at(i).at(j) - scalar : -scalar;
+      }
+    }
+    return result;
+  }
+
+  // Умножение на число
+  SparseMatrix<T> operator*(T scalar) const {
+    SparseMatrix<T> result(rows, cols);
+    for (const auto& [row, row_map] : elements) {
+      for (const auto& [col, value] : row_map) {
+        result.at(row, col) = value * scalar;
+      }
+    }
+    return result;
+  }
+
+  // Деление на число
+  SparseMatrix<T> operator/(T scalar) const {
+    if (scalar == 0) throw std::invalid_argument("Division by zero");
+    SparseMatrix<T> result(rows, cols);
+    for (const auto& [row, row_map] : elements) {
+      for (const auto& [col, value] : row_map) {
+        result.at(row, col) = value / scalar;
+      }
+    }
+    return result;
+  }
+
+  // Поэлементное возведение в степень
+  SparseMatrix<T> pow(T exponent) const {
+    SparseMatrix<T> result(rows, cols);
+    for (const auto& [row, row_map] : elements) {
+      for (const auto& [col, value] : row_map) {
+        result.at(row, col) = std::pow(value, exponent);
+      }
+    }
+    return result;
+  }
+};
+
+int main() {
+  srand(time(0));
+  setlocale(LC_ALL, "Russian");
+
+  // Тестирование разреженного вектора
+  std::cout << "1. Тестирование вектора:\n";
+  SparseVector<double> vec1(n);
+  SparseVector<double> vec2(n);
+
+  for (size_t i = 0; i < n; ++i) {
+    vec1[i] = rand() % rw;
+    vec2[i] = rand() % rw;
+  }
+
+  std::cout << "Вектор 1:\n";
+  vec1.display(); // Вывод первого вектора
+
+  std::cout << "Вектор 2:\n";
+  vec2.display(); // Вывод второго вектора
+
+  std::cout << "Сумма векторов:\n";
+  (vec1 + vec2).display(); // Сумма двух векторов
+
+  std::cout << "Скалярное произведение векторов: " << vec1.dot(vec2) << "\n"; // Скалярное произведение
+
+  // Тестирование разреженной матрицы
+  std::cout << "\n2. Тестирование матрицы:\n";
+  SparseMatrix<double> mat1(n, n);
+  SparseMatrix<double> mat2(n, n);
+
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
+      mat1.at(i, j) = rand() % rw;
+      mat2.at(i, j) = rand() % rw;
+    }
+  }
+
+  std::cout << "Матрца 1:\n";
+  mat1.display(); // Вывод первой матрицы
+
+  std::cout << "Матрица 2:\n";
+  mat2.display(); // Вывод второй матрицы
+
+  std::cout << "Сумма матриц:\n";
+  (mat1 + mat2).display(); // Сумма матриц
+
+  std::cout << "Произведение матриц:\n";
+  (mat1 * mat2).display(); // Произведение матриц
+
+  std::cout << "Транспонирование матрицы 1:\n";
+  (mat1.transpose()).display(); // Транспонирование матрицы
+
+  std::cout << "Обратная матрица 1:\n";
+  //(mat2.invert()).display();
+
+  SparseMatrix<double> mat_pow = mat1.pow(2);
+  std::cout << "Возведение матрицы в степень n:\n";
+  mat_pow.display(); // Квадрат матрицы
+
+  auto vec_mat_product = vec1.multiply(mat1);
+  std::cout << "Умножение вектора 1 на матрицу 1:\n";
+  vec_mat_product.display(); // Произведение вектора на матрицу
+
+  SparseVector<double> vec(5);
+  vec[0] = 1.5;
+  vec[3] = 2.5;
+
+  std::cout << "\n3. Вектор и число:\n";
+  std::cout << "Вектор: ";
+  vec.display();
+
+  std::cout << "Вектор + 3.0: ";
+  (vec + 3.0).display();
+
+  std::cout << "Вектор - 2.0: ";
+  (vec - 2.0).display();
+
+  std::cout << "Вектор * 2.0: ";
+  (vec * 2.0).display();
+
+  std::cout << "Вектор / 2.0: ";
+  (vec / 2.0).display();
+
+  std::cout << "Вектор ^ 2.0: ";
+  vec.pow(2.0).display();
+
+  std::cout << "\n4. Матрица и число:\n";
+  SparseMatrix<double> mat(3, 3);
+  mat.at(0, 0) = 1.0;
+  mat.at(1, 1) = 2.0;
+  mat.at(2, 2) = 3.0;
+
+  std::cout << "Матрица:\n";
+  mat.display();
+
+  std::cout << "Матрица + 1.5:\n";
+  (mat + 1.5).display();
+
+  std::cout << "Матрица - 1.0:\n";
+  (mat - 1.0).display();
+
+  std::cout << "Матрица * 2.0:\n";
+  (mat * 2.0).display();
+
+  std::cout << "Матрица / 2.0:\n";
+  (mat / 2.0).display();
+
+  std::cout << "Матрица ^ 2.0:\n";
+  mat.pow(2.0).display();
+
+  std::cout << "\n5. Сравнение производительности: разреженные vs плотные структуры.\n";
+
+  SparseMatrix<double> sparseMat(n, n);
+  std::vector<std::vector<double>> denseMat(n, std::vector<double>(n, 0));
+
+  denseMat[3][3] = 8;
+  denseMat[3][3] = 8;
+  denseMat[3][3] = 8;
+  denseMat[3][3] = 8;
+  sparseMat.at(3, 3) = 8;
+  sparseMat.at(3, 3) = 8;
+  sparseMat.at(3, 3) = 8;
+  sparseMat.at(3, 3) = 8;
+
+  auto startSparse = std::chrono::high_resolution_clock::now();
+  sparseMat * sparseMat;
+  auto endSparse = std::chrono::high_resolution_clock::now();
+
+  auto startDense = std::chrono::high_resolution_clock::now();
+  std::vector<std::vector<double>> denseResult(n, std::vector<double>(n, 0));
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
+      for (size_t k = 0; k < n; ++k) {
+        denseResult[i][j] += denseMat[i][k] * denseMat[k][j];
+      }
+    }
+  }
+  auto endDense = std::chrono::high_resolution_clock::now();
+
+  std::cout << "\nВремя разряженной матрицы: "
+    << std::chrono::duration_cast<std::chrono::microseconds>(endSparse - startSparse).count() << " мкс\n";
+  std::cout << "Время плотной матрицы: "
+    << std::chrono::duration_cast<std::chrono::microseconds>(endDense - startDense).count() << " мкс\n";
+
+  // Создание разреженного вектора
+  SparseVector<double> sparse_vector(17000);
+  sparse_vector[6] = 6;
+  sparse_vector[100] = 6;
+  sparse_vector[278] = 6;
+  sparse_vector[548] = 6;
+  // Создание стандартного вектора
+  std::vector<double> std_vector(17000);
+  std_vector[6] = 6;
+  std_vector[100] = 6;
+  std_vector[278] = 6;
+  std_vector[548] = 6;
+
+  // Измерение времени для разреженного вектора
+  auto start = std::chrono::high_resolution_clock::now();
+  SparseVector<double> sparse_result = sparse_vector * 2.5; // Умножение на скаляр
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Время разряженного вектора: "
+    << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()  << " мкс\n";
+
+  // Измерение времени для стандартного вектора
+  start = std::chrono::high_resolution_clock::now();
+  for (auto& value : std_vector) {
+    value *= 2.5; // Умножение на скаляр
+  }
+  end = std::chrono::high_resolution_clock::now();
+  std::cout << "Время плотного вектора: "
+    << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() << " мкс\n";
+
+
+  return 0;
+}
